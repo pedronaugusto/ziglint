@@ -11,6 +11,7 @@ const Linter = @import("Linter.zig");
 const ModuleGraph = @import("ModuleGraph.zig");
 const TypeResolver = @import("TypeResolver.zig");
 const rules = @import("rules.zig");
+const test_options = @import("test_options");
 
 const DocTest = struct {
     code: []const u8,
@@ -174,7 +175,7 @@ fn runDocTest(allocator: std.mem.Allocator, doc_path: []const u8, doc_test: DocT
         defer allocator.free(cache_path);
 
         const result = try std.process.run(allocator, std.testing.io, .{
-            .argv = &.{ "zig", "test", path, "--cache-dir", cache_path },
+            .argv = &.{ test_options.zig_exe, "test", path, "--cache-dir", cache_path },
             .stderr_limit = .limited(1024 * 1024),
             .stdout_limit = .limited(1024 * 1024),
         });

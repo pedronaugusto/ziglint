@@ -7,6 +7,7 @@ const TypeResolver = @import("TypeResolver.zig");
 const doc_comments = @import("doc_comments.zig");
 const Config = @import("Config.zig");
 const ModuleGraph = @import("ModuleGraph.zig");
+const test_options = @import("test_options");
 
 pub const DeprecationKey = struct {
     module_path_hash: u64,
@@ -4178,33 +4179,34 @@ test "Z011: deprecated call in nested blocks" {
     ));
 }
 
+/// Returns the lib directory of the compiler running the build, so stdlib
+/// tests see the same std regardless of which zig is on PATH.
+fn testZigLibPath() ?[]const u8 {
+    const result = std.process.run(std.testing.allocator, std.testing.io, .{
+        .argv = &.{ test_options.zig_exe, "env" },
+        .stdout_limit = .limited(64 * 1024),
+        .stderr_limit = .limited(4 * 1024),
+    }) catch return null;
+    defer std.testing.allocator.free(result.stdout);
+    defer std.testing.allocator.free(result.stderr);
+
+    switch (result.term) {
+        .exited => |code| if (code != 0) return null,
+        else => return null,
+    }
+
+    const needle = ".lib_dir = \"";
+    const start_idx = std.mem.find(u8, result.stdout, needle) orelse return null;
+    const value_start = start_idx + needle.len;
+    const end_idx = std.mem.findPos(u8, result.stdout, value_start, "\"") orelse return null;
+    return std.testing.allocator.dupe(u8, result.stdout[value_start..end_idx]) catch null;
+}
+
 test "Z011: detect deprecated stdlib function (ArrayListUnmanaged)" {
 
-    // Detect zig lib path by running zig env
-    const zig_lib_path = blk: {
-        const result = std.process.run(std.testing.allocator, std.testing.io, .{
-            .argv = &.{ "zig", "env" },
-            .stdout_limit = .limited(64 * 1024),
-            .stderr_limit = .limited(4 * 1024),
-        }) catch break :blk null;
-        defer std.testing.allocator.free(result.stdout);
-        defer std.testing.allocator.free(result.stderr);
-
-        switch (result.term) {
-            .exited => |code| if (code != 0) break :blk null,
-            else => break :blk null,
-        }
-
-        const needle = ".lib_dir = \"";
-        const start_idx = std.mem.find(u8, result.stdout, needle) orelse break :blk null;
-        const value_start = start_idx + needle.len;
-        const end_idx = std.mem.findPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
-        break :blk std.testing.allocator.dupe(u8, result.stdout[value_start..end_idx]) catch null;
-    };
-
     // Skip test if zig isn't available
-    if (zig_lib_path == null) return;
-    defer std.testing.allocator.free(zig_lib_path.?);
+    const zig_lib_path = testZigLibPath() orelse return;
+    defer std.testing.allocator.free(zig_lib_path);
 
     const source =
         \\const std = @import("std");
@@ -4245,31 +4247,9 @@ test "Z011: deprecated stdlib corpus - real Zig 0.15.2 deprecations" {
     const builtin = @import("builtin");
     if (builtin.zig_version.major == 0 and builtin.zig_version.minor >= 16) return;
 
-    // Detect zig lib path by running zig env
-    const zig_lib_path = blk: {
-        const result = std.process.run(std.testing.allocator, std.testing.io, .{
-            .argv = &.{ "zig", "env" },
-            .stdout_limit = .limited(64 * 1024),
-            .stderr_limit = .limited(4 * 1024),
-        }) catch break :blk null;
-        defer std.testing.allocator.free(result.stdout);
-        defer std.testing.allocator.free(result.stderr);
-
-        switch (result.term) {
-            .exited => |code| if (code != 0) break :blk null,
-            else => break :blk null,
-        }
-
-        const needle = ".lib_dir = \"";
-        const start_idx = std.mem.find(u8, result.stdout, needle) orelse break :blk null;
-        const value_start = start_idx + needle.len;
-        const end_idx = std.mem.findPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
-        break :blk std.testing.allocator.dupe(u8, result.stdout[value_start..end_idx]) catch null;
-    };
-
     // Skip test if zig isn't available
-    if (zig_lib_path == null) return;
-    defer std.testing.allocator.free(zig_lib_path.?);
+    const zig_lib_path = testZigLibPath() orelse return;
+    defer std.testing.allocator.free(zig_lib_path);
 
     // Test cases: each uses a real deprecated function from Zig 0.15.2 stdlib
     const test_cases = [_]struct {

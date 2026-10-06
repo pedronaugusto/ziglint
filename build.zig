@@ -39,6 +39,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addOptions("build_options", options);
+    // Tests that need std or the compiler use the zig running this build,
+    // not whichever one is first on PATH.
+    const test_options = b.addOptions();
+    test_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
+    test_mod.addOptions("test_options", test_options);
     const exe_tests = b.addTest(.{
         .root_module = test_mod,
     });
