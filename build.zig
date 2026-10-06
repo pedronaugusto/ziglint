@@ -77,6 +77,10 @@ pub fn addLint(
     };
 
     const run = b.addRunArtifact(exe);
+    // Check against the std of the zig running this build, not whichever
+    // zig is first on PATH.
+    run.addArg("--zig-lib-path");
+    run.addDirectoryArg2(.zig_lib, .{});
     for (paths) |path| {
         run.addDirectoryArg2(path, .{});
         addPathInputs(b, run, path);
