@@ -253,7 +253,7 @@ fn trackRuleTime(self: *Linter, rule: rules.Rule, time_ns: u64) void {
 
 fn collectAllIdentifiers(self: *Linter) void {
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         const tag = self.tree.nodeTag(node);
         switch (tag) {
             .identifier => {
@@ -329,7 +329,7 @@ fn buildParentMap(self: *Linter) void {
     @memset(self.parent_map, .none);
 
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
 
         // Handle nodes with potentially many children directly
         const tag = self.tree.nodeTag(node);
@@ -338,7 +338,7 @@ fn buildParentMap(self: *Linter) void {
                 var buf: [2]Ast.Node.Index = undefined;
                 const stmts = self.tree.blockStatements(&buf, node) orelse continue;
                 for (stmts) |stmt| {
-                    self.parent_map[@intFromEnum(stmt)] = node.toOptional();
+                    self.parent_map[@backingInt(stmt)] = node.toOptional();
                 }
                 continue;
             },
@@ -358,7 +358,7 @@ fn buildParentMap(self: *Linter) void {
                 var buf: [2]Ast.Node.Index = undefined;
                 const container = self.tree.fullContainerDecl(&buf, node) orelse continue;
                 for (container.ast.members) |member| {
-                    self.parent_map[@intFromEnum(member)] = node.toOptional();
+                    self.parent_map[@backingInt(member)] = node.toOptional();
                 }
                 continue;
             },
@@ -368,7 +368,7 @@ fn buildParentMap(self: *Linter) void {
         // Use ChildList for nodes with bounded children
         const children = self.getNodeChildren(node);
         for (children.slice()) |child| {
-            self.parent_map[@intFromEnum(child)] = node.toOptional();
+            self.parent_map[@backingInt(child)] = node.toOptional();
         }
     }
 }
@@ -535,7 +535,7 @@ fn getNodeChildren(self: *Linter, node: Ast.Node.Index) ChildList {
 
 fn checkThisBuiltin(self: *Linter) void {
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         const tag = self.tree.nodeTag(node);
 
         // Look for @This() calls
@@ -548,7 +548,7 @@ fn checkThisBuiltin(self: *Linter) void {
         const loc = self.tree.tokenLocation(0, main_token);
 
         // Check 1: Is it in the form `const X = @This();`?
-        const parent = self.parent_map[@intFromEnum(node)].unwrap() orelse {
+        const parent = self.parent_map[@backingInt(node)].unwrap() orelse {
             // Z020: inline @This()
             self.report(loc, .Z020, self.findEnclosingStructName(node) orelse "");
             continue;
@@ -627,7 +627,7 @@ fn checkInlineImports(self: *Linter) void {
     if (!self.config.isRuleEnabled(.Z028)) return;
 
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         const tag = self.tree.nodeTag(node);
 
         // Look for @import() calls
@@ -640,7 +640,7 @@ fn checkInlineImports(self: *Linter) void {
         // e.g., `const Rule = @import("rules.zig").Rule;`
         var current = node;
         while (true) {
-            const parent = self.parent_map[@intFromEnum(current)].unwrap() orelse {
+            const parent = self.parent_map[@backingInt(current)].unwrap() orelse {
                 const loc = self.tree.tokenLocation(0, main_token);
                 self.report(loc, .Z028, "");
                 break;
@@ -719,7 +719,7 @@ fn isAtFileLevel(self: *Linter, start_node: Ast.Node.Index) bool {
     var current = start_node;
 
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse return true; // No parent = root level
         const parent_tag = self.tree.nodeTag(parent);
 
@@ -751,7 +751,7 @@ fn isInTestBlock(self: *Linter, start_node: Ast.Node.Index) bool {
     var current = start_node;
 
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse return false;
         const parent_tag = self.tree.nodeTag(parent);
 
@@ -768,7 +768,7 @@ fn findEnclosingStructName(self: *Linter, start_node: Ast.Node.Index) ?[]const u
 
     // First pass: find the enclosing container
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse break;
         const parent_tag = self.tree.nodeTag(parent);
 
@@ -797,7 +797,7 @@ fn findEnclosingStructName(self: *Linter, start_node: Ast.Node.Index) ?[]const u
     // If so, the struct name isn't accessible from inside, so @This() is valid
     current = container;
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse break;
         const parent_tag = self.tree.nodeTag(parent);
 
@@ -809,7 +809,7 @@ fn findEnclosingStructName(self: *Linter, start_node: Ast.Node.Index) ?[]const u
     }
 
     // Container is at module level - check if it's named
-    const container_parent_opt = self.parent_map[@intFromEnum(container)];
+    const container_parent_opt = self.parent_map[@backingInt(container)];
     const container_parent = container_parent_opt.unwrap() orelse return null;
     const container_parent_tag = self.tree.nodeTag(container_parent);
 
@@ -841,7 +841,7 @@ fn findEnclosingContainer(self: *Linter, start_node: Ast.Node.Index) Ast.Node.Op
     var current = start_node;
 
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse return .none;
         const parent_tag = self.tree.nodeTag(parent);
 
@@ -2029,7 +2029,7 @@ fn checkReturnTry(self: *Linter, return_node: Ast.Node.Index, return_expr: Ast.N
 
 fn checkCatchReturnAll(self: *Linter) void {
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (self.tree.nodeTag(node) != .@"catch") continue;
 
         const data = self.tree.nodeData(node).node_and_node;
@@ -2059,7 +2059,7 @@ fn checkCatchReturnAll(self: *Linter) void {
 
 fn checkEmptyCatchAll(self: *Linter) void {
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (self.tree.nodeTag(node) != .@"catch") continue;
 
         const data = self.tree.nodeData(node).node_and_node;
@@ -2081,7 +2081,7 @@ fn checkInstanceDeclAccess(self: *Linter) void {
     const mod_path = self.module_path orelse return;
 
     for (0..self.tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (self.tree.nodeTag(node) != .field_access) continue;
 
         const data = self.tree.nodeData(node).node_and_token;
@@ -2129,7 +2129,7 @@ fn isUnderDefer(self: *Linter, node: Ast.Node.Index) bool {
     if (self.parent_map.len == 0) return false;
     var current = node;
     while (true) {
-        const parent_opt = self.parent_map[@intFromEnum(current)];
+        const parent_opt = self.parent_map[@backingInt(current)];
         const parent = parent_opt.unwrap() orelse return false;
         const tag = self.tree.nodeTag(parent);
         if (tag == .@"defer" or tag == .@"errdefer") return true;
@@ -2319,7 +2319,7 @@ fn resolveStructInitTypeName(self: *Linter, node: Ast.Node.Index, struct_init: A
 
     // Case 2: anonymous init — walk parent_map to find type context
     if (self.parent_map.len == 0) return null;
-    const parent = self.parent_map[@intFromEnum(node)].unwrap() orelse return null;
+    const parent = self.parent_map[@backingInt(node)].unwrap() orelse return null;
     const parent_tag = self.tree.nodeTag(parent);
     switch (parent_tag) {
         .simple_var_decl, .aligned_var_decl, .local_var_decl, .global_var_decl => {

@@ -56,7 +56,7 @@ pub const Rule = enum(u16) {
         var field_attrs: [enum_fields.len]std.builtin.Type.StructField.Attributes = undefined;
 
         for (enum_fields, 0..) |field, i| {
-            const rule: Rule = @enumFromInt(field.value);
+            const rule: Rule = @fromBackingInt(@intCast(field.value));
             const ConfigT = rule.ConfigType();
             const default_value: ConfigT = .{};
             field_names[i] = field.name;

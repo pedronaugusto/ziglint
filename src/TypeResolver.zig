@@ -566,8 +566,8 @@ fn findMethodInType(self: *TypeResolver, tree: *const Ast, type_node: Ast.Node.I
     const members: []const Ast.Node.Index = switch (tag) {
         .container_decl, .container_decl_trailing => blk: {
             const data = tree.nodeData(type_node).extra_range;
-            const start: usize = @intFromEnum(data.start);
-            const end: usize = @intFromEnum(data.end);
+            const start: usize = @backingInt(data.start);
+            const end: usize = @backingInt(data.end);
             break :blk @ptrCast(tree.extra_data[start..end]);
         },
         .container_decl_two, .container_decl_two_trailing => blk: {

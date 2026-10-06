@@ -21,7 +21,7 @@ pub fn getLineLength(self: *const Config) u32 {
 /// Check if a rule is enabled (considering config).
 pub fn isRuleEnabled(self: *const Config, rule: Rule) bool {
     inline for (@typeInfo(Rule).@"enum".fields) |field| {
-        if (field.value == @intFromEnum(rule)) {
+        if (field.value == @backingInt(rule)) {
             return @field(self.rules, field.name).enabled;
         }
     }
@@ -31,7 +31,7 @@ pub fn isRuleEnabled(self: *const Config, rule: Rule) bool {
 /// Set whether a rule is enabled.
 pub fn setRuleEnabled(self: *Config, rule: Rule, enabled: bool) void {
     inline for (@typeInfo(Rule).@"enum".fields) |field| {
-        if (field.value == @intFromEnum(rule)) {
+        if (field.value == @backingInt(rule)) {
             @field(self.rules, field.name).enabled = enabled;
             return;
         }
