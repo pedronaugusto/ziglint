@@ -2590,7 +2590,7 @@ fn checkRedundantType(self: *Linter, node: Ast.Node.Index, check_field_access: b
         const full_expr = self.getNodeSource(node);
         const type_name = self.tree.tokenSlice(type_token);
         // Find where the type name ends and extract the { ... } part
-        const brace_start = std.mem.indexOf(u8, full_expr, "{") orelse return;
+        const brace_start = std.mem.find(u8, full_expr, "{") orelse return;
         const fields_part = truncateExpr(full_expr[brace_start..]);
         const full_truncated = truncateExpr(full_expr);
         const msg = self.allocator.print(".{s}\x00{s}", .{ fields_part, full_truncated }) catch return;
@@ -4013,9 +4013,9 @@ test "Z011: detect deprecated stdlib function (ArrayListUnmanaged)" {
         }
 
         const needle = ".lib_dir = \"";
-        const start_idx = std.mem.indexOf(u8, result.stdout, needle) orelse break :blk null;
+        const start_idx = std.mem.find(u8, result.stdout, needle) orelse break :blk null;
         const value_start = start_idx + needle.len;
-        const end_idx = std.mem.indexOfPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
+        const end_idx = std.mem.findPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
         break :blk std.testing.allocator.dupe(u8, result.stdout[value_start..end_idx]) catch null;
     };
 
@@ -4078,9 +4078,9 @@ test "Z011: deprecated stdlib corpus - real Zig 0.15.2 deprecations" {
         }
 
         const needle = ".lib_dir = \"";
-        const start_idx = std.mem.indexOf(u8, result.stdout, needle) orelse break :blk null;
+        const start_idx = std.mem.find(u8, result.stdout, needle) orelse break :blk null;
         const value_start = start_idx + needle.len;
-        const end_idx = std.mem.indexOfPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
+        const end_idx = std.mem.findPos(u8, result.stdout, value_start, "\"") orelse break :blk null;
         break :blk std.testing.allocator.dupe(u8, result.stdout[value_start..end_idx]) catch null;
     };
 

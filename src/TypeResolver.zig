@@ -1099,9 +1099,9 @@ fn resolveNumberLiteral(_: *TypeResolver, tree: *const Ast, node: Ast.Node.Index
     const main_token = tree.nodeMainToken(node);
     const text = tree.tokenSlice(main_token);
 
-    if (std.mem.indexOf(u8, text, ".") != null or
-        std.mem.indexOf(u8, text, "e") != null or
-        std.mem.indexOf(u8, text, "E") != null)
+    if (std.mem.find(u8, text, ".") != null or
+        std.mem.find(u8, text, "e") != null or
+        std.mem.find(u8, text, "E") != null)
     {
         return .{ .primitive = .comptime_float };
     }
@@ -1997,5 +1997,5 @@ test "findFnInCurrentModule: const alias to function" {
     const doc = doc_comments.getDocComment(std.testing.allocator, &mod.tree, method_def.?.node);
     defer if (doc) |d| std.testing.allocator.free(d);
     try std.testing.expect(doc != null);
-    try std.testing.expect(std.mem.indexOf(u8, doc.?, "Deprecated") != null);
+    try std.testing.expect(std.mem.find(u8, doc.?, "Deprecated") != null);
 }
