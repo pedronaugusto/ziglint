@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const build_zon = @import("build.zig.zon");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -108,6 +110,11 @@ fn addPathInputs(b: *std.Build, run: *std.Build.Step.Run, lazy_path: std.Build.L
 }
 
 fn getVersion(b: *std.Build) []const u8 {
+    // A fetched package has no git history, and git would describe the project
+    // that depends on it. Use the package version and leave its configure cache
+    // intact.
+    if (b.pkg_hash.len != 0) return build_zon.version;
+
     // The configure cache cannot track git state, so rerun configure every time
     // rather than report a stale version.
     b.graph.poisonCache();
