@@ -193,6 +193,7 @@ pub fn lint(self: *Linter) void {
 
     const checks_start = if (timer) |t| timerRead(self.io.?, t) else 0;
     self.checkUnusedImports();
+    self.checkDeprecatedCalls();
     self.checkThisBuiltin();
     self.checkInlineImports();
     self.checkCatchReturnAll();
@@ -1430,14 +1431,6 @@ fn visitNode(self: *Linter, node: Ast.Node.Index) void {
             self.checkRedundantAsInCallArgs(node);
 
             if (self.rule_timer != null and self.io != null) {
-                const deprecated_start = timerRead(self.io.?, self.rule_timer.?);
-                self.checkDeprecatedCall(node);
-                self.trackRuleTime(.Z011, timerRead(self.io.?, self.rule_timer.?) - deprecated_start);
-            } else {
-                self.checkDeprecatedCall(node);
-            }
-
-            if (self.rule_timer != null and self.io != null) {
                 const assert_start = timerRead(self.io.?, self.rule_timer.?);
                 self.checkCompoundAssert(node);
                 self.trackRuleTime(.Z016, timerRead(self.io.?, self.rule_timer.?) - assert_start);
@@ -2385,6 +2378,24 @@ fn checkCallArgs(self: *Linter, node: Ast.Node.Index) void {
         if (!std.mem.eql(u8, arg_type_source, param_type_source)) continue;
 
         self.checkRedundantType(arg, false);
+    }
+}
+
+/// Scans every call node in the tree, so calls are checked wherever they
+/// appear, not only in the positions `visitNode` walks into.
+fn checkDeprecatedCalls(self: *Linter) void {
+    if (self.type_resolver == null or self.module_path == null) return;
+
+    const start = if (self.rule_timer != null and self.io != null) timerRead(self.io.?, self.rule_timer.?) else 0;
+    for (0..self.tree.nodes.len) |i| {
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
+        switch (self.tree.nodeTag(node)) {
+            .call_one, .call_one_comma, .call, .call_comma => self.checkDeprecatedCall(node),
+            else => {},
+        }
+    }
+    if (self.rule_timer != null and self.io != null) {
+        self.trackRuleTime(.Z011, timerRead(self.io.?, self.rule_timer.?) - start);
     }
 }
 
@@ -3993,6 +4004,178 @@ test "Z011: detect deprecated type function alias" {
         }
     }
     try std.testing.expect(found_z011);
+}
+
+fn countZ011(source: [:0]const u8) !usize {
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    try tmp_dir.dir.writeFile(std.testing.io, .{ .sub_path = "test.zig", .data = source });
+    const path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, "test.zig", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    var graph = try ModuleGraph.init(std.testing.allocator, std.testing.io, path, null);
+    defer graph.deinit();
+
+    var resolver: TypeResolver = .init(std.testing.allocator, &graph);
+    defer resolver.deinit();
+
+    var linter: Linter = .initWithSemantics(std.testing.allocator, source, path, &resolver, path, null);
+    defer linter.deinit();
+
+    linter.lint();
+    return linter.diagnosticCount(.Z011);
+}
+
+test "Z011: deprecated call in return" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\const MyType = struct {
+        \\    /// Deprecated: use newMethod instead
+        \\    pub fn oldMethod(self: @This()) u32 {
+        \\        _ = self;
+        \\        return 1;
+        \\    }
+        \\};
+        \\const instance: MyType = .{};
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\pub fn a() u32 {
+        \\    return oldFunc();
+        \\}
+        \\pub fn b() u32 {
+        \\    return instance.oldMethod();
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in field value" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\const S = struct {
+        \\    a: u32 = oldFunc(),
+        \\    b: u32 = 0,
+        \\};
+        \\pub fn main() void {
+        \\    const s: S = .{ .b = oldFunc() };
+        \\    _ = s;
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in switch arm" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\pub fn main(x: u8) void {
+        \\    const y = switch (x) {
+        \\        0 => oldFunc(),
+        \\        1, 2 => blk: {
+        \\            const z = oldFunc();
+        \\            break :blk z;
+        \\        },
+        \\        else => 0,
+        \\    };
+        \\    _ = y;
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in if/else" {
+    try std.testing.expectEqual(3, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\pub fn main(c: bool) void {
+        \\    var x: u32 = 0;
+        \\    if (oldFunc() == 1) {
+        \\        x = 1;
+        \\    } else {
+        \\        x = 2;
+        \\    }
+        \\    x += if (c) oldFunc() else oldFunc();
+        \\}
+    ));
+}
+
+test "Z011: deprecated call as call argument" {
+    try std.testing.expectEqual(3, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\fn log(args: anytype) void {
+        \\    _ = args;
+        \\}
+        \\pub fn main() void {
+        \\    log(.{oldFunc()});
+        \\    log(.{ .value = oldFunc() });
+        \\    _ = @max(1, 2, oldFunc());
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in defer and errdefer" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\fn check(ok: bool) void {
+        \\    _ = ok;
+        \\}
+        \\pub fn main() !void {
+        \\    defer check(oldFunc() == 1);
+        \\    errdefer check(oldFunc() != 0);
+        \\    return error.Fail;
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in comptime" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\comptime {
+        \\    _ = oldFunc();
+        \\}
+        \\pub fn main() void {
+        \\    const x = comptime oldFunc();
+        \\    _ = x;
+        \\}
+    ));
+}
+
+test "Z011: deprecated call in nested blocks" {
+    try std.testing.expectEqual(2, try countZ011(
+        \\/// Deprecated: use newFunc instead
+        \\fn oldFunc() u32 {
+        \\    return 1;
+        \\}
+        \\pub fn main(items: []const u32) void {
+        \\    for (items) |item| {
+        \\        while (item > 0) {
+        \\            const x = outer: {
+        \\                break :outer oldFunc();
+        \\            };
+        \\            _ = x;
+        \\            {
+        \\                _ = item + oldFunc();
+        \\            }
+        \\            break;
+        \\        }
+        \\    }
+        \\}
+    ));
 }
 
 test "Z011: detect deprecated stdlib function (ArrayListUnmanaged)" {
