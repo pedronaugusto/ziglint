@@ -25,9 +25,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the application");
     run_step.dependOn(&run_cmd.step);
@@ -44,7 +42,7 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&b.addRunArtifact(exe_tests).step);
 
-    const fmt_check = b.addFmt(.{ .paths = &.{ "src", "build.zig", "build.zig.zon" } });
+    const fmt_check = b.addFmt(.{ .paths = b.pathList(&.{ "src", "build.zig", "build.zig.zon" }) });
     test_step.dependOn(&fmt_check.step);
 
     const lint_step = addLint(b, exe, &.{ b.path("src"), b.path("build.zig") });
@@ -73,7 +71,7 @@ pub fn addLint(
 
     const run = b.addRunArtifact(exe);
     for (paths) |path| {
-        run.addDirectoryArg(path);
+        run.addDirectoryArg2(path, .{});
         addPathInputs(b, run, path);
     }
     run.expectExitCode(0);
@@ -88,14 +86,19 @@ fn addPathInputs(b: *std.Build, run: *std.Build.Step.Run, lazy_path: std.Build.L
     };
 
     const io = src.owner.graph.io;
-    const stat = src.owner.build_root.handle.statFile(io, src.sub_path, .{}) catch return;
+    const stat = src.owner.root.statFile(io, src.sub_path) catch return;
     if (stat.kind == .directory) {
-        var dir = src.owner.build_root.handle.openDir(io, src.sub_path, .{ .iterate = true }) catch return;
+        // The walk happens at configure time, so every directory it reads must
+        // be declared; otherwise adding or removing a file would not rerun it.
+        b.dependOnDirectoryContents(lazy_path);
+        var dir = src.owner.root.openDir(io, src.sub_path, .{ .iterate = true }) catch return;
         defer dir.close(io);
         var walker = dir.walk(b.allocator) catch return;
         defer walker.deinit();
         while (walker.next(io) catch null) |entry| {
-            if (entry.kind == .file and std.mem.endsWith(u8, entry.basename, ".zig")) {
+            if (entry.kind == .directory) {
+                b.dependOnDirectoryContents(lazy_path.path(b, entry.path));
+            } else if (entry.kind == .file and std.mem.endsWith(u8, entry.basename, ".zig")) {
                 run.addFileInput(lazy_path.path(run.step.owner, entry.path));
             }
         }
@@ -105,9 +108,14 @@ fn addPathInputs(b: *std.Build, run: *std.Build.Step.Run, lazy_path: std.Build.L
 }
 
 fn getVersion(b: *std.Build) []const u8 {
-    var code: u8 = undefined;
-    const git_describe = b.runAllowFail(&.{ "git", "describe", "--match", "v*.*.*", "--tags" }, &code, .ignore) catch {
-        return "unknown";
+    // The configure cache cannot track git state, so rerun configure every time
+    // rather than report a stale version.
+    b.graph.poisonCache();
+    const git_describe = switch (b.runFallible(&.{ "git", "describe", "--match", "v*.*.*", "--tags" }, .{
+        .stderr_behavior = .ignore,
+    })) {
+        .success => |stdout| stdout,
+        .spawn_failed, .bad_exit_code, .crashed => return "unknown",
     };
     const trimmed = std.mem.trim(u8, git_describe, " \n\r");
     const without_v = if (trimmed.len > 0 and trimmed[0] == 'v') trimmed[1..] else trimmed;
