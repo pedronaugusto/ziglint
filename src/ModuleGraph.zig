@@ -76,7 +76,7 @@ fn addModule(self: *ModuleGraph, path: []const u8) !void {
         return;
     };
 
-    const tree = Ast.parse(self.allocator, source, .zig) catch {
+    const tree = Ast.parse(self.allocator, source, .{}) catch {
         self.allocator.free(source);
         self.allocator.free(canonical);
         return;

@@ -20,21 +20,15 @@ pub fn getLineLength(self: *const Config) u32 {
 
 /// Check if a rule is enabled (considering config).
 pub fn isRuleEnabled(self: *const Config, rule: Rule) bool {
-    inline for (@typeInfo(Rule).@"enum".fields) |field| {
-        if (field.value == @backingInt(rule)) {
-            return @field(self.rules, field.name).enabled;
-        }
+    switch (rule) {
+        inline else => |r| return @field(self.rules, @tagName(r)).enabled,
     }
-    return true;
 }
 
 /// Set whether a rule is enabled.
 pub fn setRuleEnabled(self: *Config, rule: Rule, enabled: bool) void {
-    inline for (@typeInfo(Rule).@"enum".fields) |field| {
-        if (field.value == @backingInt(rule)) {
-            @field(self.rules, field.name).enabled = enabled;
-            return;
-        }
+    switch (rule) {
+        inline else => |r| @field(self.rules, @tagName(r)).enabled = enabled,
     }
 }
 
@@ -105,10 +99,18 @@ fn parseConfigFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !
 }
 
 fn parseConfigSource(allocator: std.mem.Allocator, source: [:0]const u8) !Config {
-    const zon_config = std.zon.parse.fromSliceAlloc(ZonConfig, allocator, source, null, .{}) catch {
+    // The parsed value lives in the arena; the paths that outlive it are copied below.
+    var arena: std.heap.ArenaAllocator = .init(allocator);
+    defer arena.deinit();
+    var diagnostics: std.zon.parse.Diagnostics = undefined;
+    const zon_config = std.zon.parse.fromSlice(ZonConfig, .{
+        .gpa = allocator,
+        .arena = arena.allocator(),
+        .source = source,
+        .diagnostics = &diagnostics,
+    }) catch {
         return error.ParseError;
     };
-    defer std.zon.parse.free(allocator, zon_config);
 
     var config: Config = .{};
 

@@ -50,16 +50,15 @@ pub const Rule = enum(u16) {
     }
 
     pub const Config = blk: {
-        const enum_fields = @typeInfo(Rule).@"enum".fields;
-        var field_names: [enum_fields.len][:0]const u8 = undefined;
-        var field_types: [enum_fields.len]type = undefined;
-        var field_attrs: [enum_fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        const all_rules = std.meta.tags(Rule);
+        var field_names: [all_rules.len][:0]const u8 = undefined;
+        var field_types: [all_rules.len]type = undefined;
+        var field_attrs: [all_rules.len]std.lang.Type.Struct.FieldAttributes = undefined;
 
-        for (enum_fields, 0..) |field, i| {
-            const rule: Rule = @fromBackingInt(@intCast(field.value));
+        for (all_rules, 0..) |rule, i| {
             const ConfigT = rule.ConfigType();
             const default_value: ConfigT = .{};
-            field_names[i] = field.name;
+            field_names[i] = @tagName(rule);
             field_types[i] = ConfigT;
             field_attrs[i] = .{
                 .default_value_ptr = @ptrCast(&default_value),
@@ -316,11 +315,12 @@ fn writeHighlightedStructInit(writer: *std.Io.Writer, code: []const u8, type_col
 /// Generates a config struct with `enabled: bool` plus any extra fields.
 // ziglint-ignore: Z023
 fn RuleConfig(comptime enabled_by_default: bool, comptime Extra: type) type {
-    const extra_fields = @typeInfo(Extra).@"struct".fields;
+    const extra = @typeInfo(Extra).@"struct";
+    const extra_len = extra.field_names.len;
 
-    var field_names: [1 + extra_fields.len][:0]const u8 = undefined;
-    var field_types: [1 + extra_fields.len]type = undefined;
-    var field_attrs: [1 + extra_fields.len]std.builtin.Type.StructField.Attributes = undefined;
+    var field_names: [1 + extra_len][:0]const u8 = undefined;
+    var field_types: [1 + extra_len]type = undefined;
+    var field_attrs: [1 + extra_len]std.lang.Type.Struct.FieldAttributes = undefined;
 
     const default_enabled: bool = enabled_by_default;
     field_names[0] = "enabled";
@@ -329,15 +329,9 @@ fn RuleConfig(comptime enabled_by_default: bool, comptime Extra: type) type {
         .default_value_ptr = @ptrCast(&default_enabled),
     };
 
-    for (extra_fields, 0..) |f, i| {
-        field_names[1 + i] = f.name;
-        field_types[1 + i] = f.type;
-        field_attrs[1 + i] = .{
-            .@"comptime" = f.is_comptime,
-            .@"align" = f.alignment,
-            .default_value_ptr = f.default_value_ptr,
-        };
-    }
+    @memcpy(field_names[1..], extra.field_names);
+    @memcpy(field_types[1..], extra.field_types);
+    @memcpy(field_attrs[1..], extra.field_attrs);
 
     return @Struct(.auto, null, &field_names, &field_types, &field_attrs);
 }

@@ -103,7 +103,7 @@ pub fn init(allocator: std.mem.Allocator, source: [:0]const u8, path: []const u8
         .allocator = allocator,
         .source = source,
         .path = path,
-        .tree = Ast.parse(allocator, source, .zig) catch unreachable,
+        .tree = Ast.parse(allocator, source, .{}) catch unreachable,
         .diagnostics = .empty,
         .seen_imports = .empty,
         .config = config orelse &default_config,
@@ -122,7 +122,7 @@ pub fn initWithSemantics(
         .allocator = allocator,
         .source = source,
         .path = path,
-        .tree = Ast.parse(allocator, source, .zig) catch unreachable,
+        .tree = Ast.parse(allocator, source, .{}) catch unreachable,
         .diagnostics = .empty,
         .seen_imports = .empty,
         .type_resolver = type_resolver,
@@ -478,13 +478,8 @@ fn getNodeChildren(self: *Linter, node: Ast.Node.Index) ChildList {
             if (full_for.ast.else_expr.unwrap()) |n| children.append(n);
         },
 
-        .@"defer" => {
+        .@"defer", .@"errdefer" => {
             children.append(self.tree.nodeData(node).node);
-        },
-
-        .@"errdefer" => {
-            const data = self.tree.nodeData(node).opt_token_and_node;
-            children.append(data[1]);
         },
 
         // field_access: node_and_token = [lhs, field_token]

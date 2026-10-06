@@ -1189,7 +1189,7 @@ fn builtinCallIsTypeRef(_: *TypeResolver, tree: *const Ast, node: Ast.Node.Index
 test "resolve primitive types" {
     const source = "const x: u32 = 0;";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1216,7 +1216,7 @@ test "resolve primitive types" {
 test "resolve bool literal" {
     const source = "const x = true;";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1241,7 +1241,7 @@ test "resolve bool literal" {
 test "resolve import std" {
     const source = "const std = @import(\"std\");";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1265,7 +1265,7 @@ test "resolve import std" {
 test "resolve function returns type" {
     const source = "fn MyType() type { return struct {}; }";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1289,7 +1289,7 @@ test "resolve function returns type" {
 test "resolve number literal int" {
     const source = "const x = 42;";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1314,7 +1314,7 @@ test "resolve number literal int" {
 test "resolve number literal float" {
     const source = "const x = 3.14;";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1342,7 +1342,7 @@ test "resolve field access on std" {
         \\const fs = std.fs;
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1372,7 +1372,7 @@ test "resolve nested field access std.fs.File" {
         \\const File = std.fs.File;
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1402,7 +1402,7 @@ test "resolve field access on aliased std import" {
         \\const fs = stdlib.fs;
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1432,7 +1432,7 @@ test "resolve nested field access on aliased std import" {
         \\const File = stdlib.fs.File;
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1459,7 +1459,7 @@ test "resolve nested field access on aliased std import" {
 test "resolve string literal" {
     const source = "const s = \"hello\";";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});
@@ -1483,7 +1483,7 @@ test "resolve string literal" {
 test "resolve function declaration" {
     const source = "fn foo() void {}";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     var tmp_dir = std.testing.tmpDir(.{});

@@ -188,19 +188,13 @@ fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8, writer: *st
 }
 
 fn parseRuleCode(code: []const u8) ?rules.Rule {
-    inline for (std.meta.fields(rules.Rule)) |field| {
-        if (std.mem.eql(u8, code, field.name)) {
-            return @fromBackingInt(@intCast(field.value));
-        }
-    }
-    return null;
+    return std.meta.stringToEnum(rules.Rule, code);
 }
 
 fn applyOnlyRules(config: *Config) void {
     if (config.only_rules.len == 0) return;
 
-    inline for (std.meta.fields(rules.Rule)) |field| {
-        const rule: rules.Rule = @fromBackingInt(@intCast(field.value));
+    for (std.meta.tags(rules.Rule)) |rule| {
         config.file_config.setRuleEnabled(rule, false);
     }
 

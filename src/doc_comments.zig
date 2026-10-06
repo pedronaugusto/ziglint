@@ -63,7 +63,7 @@ test "extract single line doc comment" {
         \\fn foo() void {}
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     const root_decls = tree.rootDecls();
@@ -84,7 +84,7 @@ test "extract multi-line doc comment" {
         \\fn foo() void {}
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     const root_decls = tree.rootDecls();
@@ -98,7 +98,7 @@ test "extract multi-line doc comment" {
 test "no doc comment returns null" {
     const source = "fn foo() void {}";
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     const root_decls = tree.rootDecls();
@@ -113,7 +113,7 @@ test "doc comment with pub function" {
         \\pub fn foo() void {}
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     const root_decls = tree.rootDecls();
@@ -130,7 +130,7 @@ test "doc comment without space after ///" {
         \\fn foo() void {}
     ;
 
-    var tree = try Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     const root_decls = tree.rootDecls();
