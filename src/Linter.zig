@@ -2498,7 +2498,7 @@ fn containsDeprecated(text: []const u8) bool {
         if (std.ascii.startsWithIgnoreCase(line, "deprecated")) {
             if (line.len == "deprecated".len) return true;
             const separator = line["deprecated".len];
-            if (separator == ':' or separator == ';' or separator == '.' or separator == ' ') return true;
+            if (separator == ':' or separator == ';' or separator == ',' or separator == '.' or separator == ' ') return true;
         }
         if (std.ascii.startsWithIgnoreCase(line, "this function is deprecated")) return true;
     }
@@ -4268,6 +4268,7 @@ test "Z011: deprecated stdlib corpus - real Zig 0.15.2 deprecations" {
 test "containsDeprecated" {
     try std.testing.expect(containsDeprecated("Deprecated: use X instead"));
     try std.testing.expect(containsDeprecated("deprecated; use X instead"));
+    try std.testing.expect(containsDeprecated("Deprecated, use `X` instead."));
     try std.testing.expect(containsDeprecated("Summary\nDeprecated in favor of X"));
     try std.testing.expect(containsDeprecated("This function is deprecated; use X"));
     try std.testing.expect(!containsDeprecated("This function is useful"));
