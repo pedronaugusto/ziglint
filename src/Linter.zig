@@ -1145,7 +1145,7 @@ fn checkArgumentOrder(self: *Linter, node: Ast.Node.Index) void {
                 (if (param.type_expr) |te| self.tree.nodeMainToken(te) else continue);
             const loc = self.tree.tokenLocation(0, token);
 
-            const context = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{
+            const context = self.allocator.print("{s}\x00{s}", .{
                 kind.name(),
                 max_kind.name(),
             }) catch continue;
@@ -1655,7 +1655,7 @@ fn checkDeinitUndefined(self: *Linter, node: Ast.Node.Index, fn_proto: Ast.full.
 }
 
 fn reportDeinitUndefined(self: *Linter, loc: Ast.Location, param_name: []const u8, reason: []const u8) void {
-    const context = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ param_name, reason }) catch return;
+    const context = self.allocator.print("{s}\x00{s}", .{ param_name, reason }) catch return;
     self.allocated_contexts.append(self.allocator, context) catch {
         self.allocator.free(context);
         return;
@@ -1881,7 +1881,7 @@ fn checkVarDecl(self: *Linter, node: Ast.Node.Index) void {
                 const struct_init = self.tree.fullStructInit(&buf, init_node) orelse return;
                 const type_node = struct_init.ast.type_expr.unwrap() orelse return;
                 const type_source = self.getNodeSource(type_node);
-                const context = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ name, type_source }) catch return;
+                const context = self.allocator.print("{s}\x00{s}", .{ name, type_source }) catch return;
                 self.allocated_contexts.append(self.allocator, context) catch {
                     self.allocator.free(context);
                     return;
@@ -2095,7 +2095,7 @@ fn checkInstanceDeclAccess(self: *Linter) void {
         };
 
         const loc = self.tree.tokenLocation(0, field_token);
-        const context = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{
+        const context = self.allocator.print("{s}\x00{s}", .{
             field_name, type_name,
         }) catch continue;
         // ziglint-ignore: Z026
@@ -2453,7 +2453,7 @@ fn checkDefDeprecation(self: *Linter, def: TypeResolver.MethodDef, name_token: A
         defer self.allocator.free(doc);
 
         const loc = self.tree.tokenLocation(0, name_token);
-        const msg = std.fmt.allocPrint(self.allocator, "'{s}' is deprecated: {s}", .{ fn_name, doc }) catch return false;
+        const msg = self.allocator.print("'{s}' is deprecated: {s}", .{ fn_name, doc }) catch return false;
         self.allocated_contexts.append(self.allocator, msg) catch {
             self.allocator.free(msg);
             return false;
@@ -2477,7 +2477,7 @@ fn checkDefDeprecation(self: *Linter, def: TypeResolver.MethodDef, name_token: A
         self.deprecation_cache.put(self.allocator, cache_key, true) catch return true;
 
         const loc = self.tree.tokenLocation(0, name_token);
-        const msg = std.fmt.allocPrint(self.allocator, "'{s}' is deprecated: {s}", .{ fn_name, doc }) catch return false;
+        const msg = self.allocator.print("'{s}' is deprecated: {s}", .{ fn_name, doc }) catch return false;
         self.allocated_contexts.append(self.allocator, msg) catch {
             self.allocator.free(msg);
             return false;
@@ -2593,7 +2593,7 @@ fn checkRedundantType(self: *Linter, node: Ast.Node.Index, check_field_access: b
         const brace_start = std.mem.indexOf(u8, full_expr, "{") orelse return;
         const fields_part = truncateExpr(full_expr[brace_start..]);
         const full_truncated = truncateExpr(full_expr);
-        const msg = std.fmt.allocPrint(self.allocator, ".{s}\x00{s}", .{ fields_part, full_truncated }) catch return;
+        const msg = self.allocator.print(".{s}\x00{s}", .{ fields_part, full_truncated }) catch return;
         self.allocated_contexts.append(self.allocator, msg) catch {
             self.allocator.free(msg);
             return;
@@ -2621,7 +2621,7 @@ fn checkRedundantType(self: *Linter, node: Ast.Node.Index, check_field_access: b
         const loc = self.tree.tokenLocation(0, self.tree.nodeMainToken(lhs));
         // Full expression is "Type.field"
         const full_expr = truncateExpr(self.getNodeSource(node));
-        const msg = std.fmt.allocPrint(self.allocator, ".{s}\x00{s}", .{ field_name, full_expr }) catch return;
+        const msg = self.allocator.print(".{s}\x00{s}", .{ field_name, full_expr }) catch return;
         self.allocated_contexts.append(self.allocator, msg) catch {
             self.allocator.free(msg);
             return;
@@ -3045,7 +3045,7 @@ fn checkLineLength(self: *Linter) void {
             const line_len = sourceLineByteLength(self.source, line_start, i);
             if (line_len > max_len) {
                 // Format: "actual_len\x00max_len" for the error message
-                const context = std.fmt.allocPrint(self.allocator, "{}\x00{}", .{ line_len, max_len }) catch continue;
+                const context = self.allocator.print("{}\x00{}", .{ line_len, max_len }) catch continue;
                 self.allocated_contexts.append(self.allocator, context) catch {
                     self.allocator.free(context);
                     continue;
@@ -3061,7 +3061,7 @@ fn checkLineLength(self: *Linter) void {
     if (line_start < self.source.len) {
         const line_len = sourceLineByteLength(self.source, line_start, self.source.len);
         if (line_len > max_len) {
-            const context = std.fmt.allocPrint(self.allocator, "{}\x00{}", .{ line_len, max_len }) catch return;
+            const context = self.allocator.print("{}\x00{}", .{ line_len, max_len }) catch return;
             self.allocated_contexts.append(self.allocator, context) catch {
                 self.allocator.free(context);
                 return;

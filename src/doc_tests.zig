@@ -159,7 +159,7 @@ fn runDocTest(allocator: std.mem.Allocator, doc_path: []const u8, doc_test: DocT
     }
 
     if (doc_test.compile_probe) |probe| {
-        const compile_source = try std.fmt.allocPrint(allocator,
+        const compile_source = try allocator.print(
             \\{s}
             \\
             \\comptime {{
@@ -228,7 +228,7 @@ pub fn runAllDocTests(allocator: std.mem.Allocator) !void {
             allocator.free(doc.tests);
         }
 
-        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ docs_path, entry.name });
+        const full_path = try allocator.print("{s}/{s}", .{ docs_path, entry.name });
         defer allocator.free(full_path);
 
         for (doc.tests) |doc_test| {
