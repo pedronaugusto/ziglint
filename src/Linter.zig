@@ -1124,7 +1124,7 @@ fn checkArgumentOrder(self: *Linter, node: Ast.Node.Index) void {
         // Skip first param if it's a receiver (type refers to @This() or container type)
         if (is_first) {
             is_first = false;
-            if (self.isReceiverParam(param)) continue;
+            if (self.isReceiverParam(param, node)) continue;
         }
 
         const kind = self.classifyParam(param);
@@ -1170,7 +1170,7 @@ fn classifyParam(self: *Linter, param: Ast.full.FnProto.Param) ParamKind {
     return base_kind;
 }
 
-fn isReceiverParam(self: *Linter, param: Ast.full.FnProto.Param) bool {
+fn isReceiverParam(self: *Linter, param: Ast.full.FnProto.Param, fn_node: Ast.Node.Index) bool {
     const type_node = param.type_expr orelse return false;
 
     // Use TypeResolver if available for accurate type resolution
@@ -1188,7 +1188,14 @@ fn isReceiverParam(self: *Linter, param: Ast.full.FnProto.Param) bool {
     }
 
     // Fallback: check for @This() or Self
-    return self.typeRefersToThis(type_node);
+    if (self.typeRefersToThis(type_node)) return true;
+
+    // The enclosing container named directly. The resolver looks names up at
+    // the top of the file only, so a struct nested in another resolves to nothing.
+    const inner_node = self.unwrapPointerType(type_node);
+    if (self.tree.nodeTag(inner_node) != .identifier) return false;
+    const container_name = self.findEnclosingStructName(fn_node) orelse return false;
+    return std.mem.eql(u8, self.tree.tokenSlice(self.tree.nodeMainToken(inner_node)), container_name);
 }
 
 fn unwrapPointerType(self: *Linter, node: Ast.Node.Index) Ast.Node.Index {
@@ -5485,6 +5492,62 @@ test "Z023: comptime value after other is bad" {
         if (d.rule == rules.Rule.Z023) found = true;
     }
     try std.testing.expect(found);
+}
+
+test "Z023: receiver of a struct nested in a struct is ok" {
+    const source =
+        \\const std = @import("std");
+        \\pub const Orphans = struct {
+        \\    pub const Spawn = struct {
+        \\        open: bool,
+        \\        pub fn finish(spawn: *Spawn, io: std.Io) void {
+        \\            _ = .{ spawn, io };
+        \\        }
+        \\    };
+        \\    pub const Kind = union(enum) {
+        \\        a: u8,
+        \\        pub fn show(kind: Kind, gpa: std.mem.Allocator) void {
+        \\            _ = .{ kind, gpa };
+        \\        }
+        \\    };
+        \\};
+    ;
+    var linter: Linter = .init(std.testing.allocator, source, "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(0, linter.diagnosticCount(.Z023));
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    try tmp_dir.dir.writeFile(std.testing.io, .{ .sub_path = "test.zig", .data = source });
+    const path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, "test.zig", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+    var graph = try ModuleGraph.init(std.testing.allocator, std.testing.io, path, null);
+    defer graph.deinit();
+    var resolver: TypeResolver = .init(std.testing.allocator, &graph);
+    defer resolver.deinit();
+    var semantic: Linter = .initWithSemantics(std.testing.allocator, source, path, &resolver, path, null);
+    defer semantic.deinit();
+    semantic.lint();
+    try std.testing.expectEqual(0, semantic.diagnosticCount(.Z023));
+}
+
+test "Z023: another nested type first is not a receiver" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\const std = @import("std");
+        \\pub const Orphans = struct {
+        \\    pub const Held = struct { pid: i32 };
+        \\    pub const Spawn = struct {
+        \\        open: bool,
+        \\        pub fn adopt(held: *Held, io: std.Io) void {
+        \\            _ = .{ held, io };
+        \\        }
+        \\    };
+        \\};
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(1, linter.diagnosticCount(.Z023));
 }
 
 test "Z024: detect line exceeding 120 bytes" {
