@@ -769,18 +769,7 @@ fn findEnclosingStructName(self: *Linter, start_node: Ast.Node.Index) ?[]const u
         const parent = parent_opt.unwrap() orelse break;
         const parent_tag = self.tree.nodeTag(parent);
 
-        const is_container = switch (parent_tag) {
-            .container_decl,
-            .container_decl_trailing,
-            .container_decl_two,
-            .container_decl_two_trailing,
-            .container_decl_arg,
-            .container_decl_arg_trailing,
-            => true,
-            else => false,
-        };
-
-        if (is_container) {
+        if (isContainerTag(parent_tag)) {
             enclosing_container = parent;
             break;
         }
@@ -842,23 +831,33 @@ fn findEnclosingContainer(self: *Linter, start_node: Ast.Node.Index) Ast.Node.Op
         const parent = parent_opt.unwrap() orelse return .none;
         const parent_tag = self.tree.nodeTag(parent);
 
-        const is_container = switch (parent_tag) {
-            .container_decl,
-            .container_decl_trailing,
-            .container_decl_two,
-            .container_decl_two_trailing,
-            .container_decl_arg,
-            .container_decl_arg_trailing,
-            => true,
-            else => false,
-        };
-
-        if (is_container) {
+        if (isContainerTag(parent_tag)) {
             return parent.toOptional();
         }
 
         current = parent;
     }
+}
+
+/// Whether `tag` opens a container: a struct, an enum, an opaque or a union,
+/// tagged ones included.
+fn isContainerTag(tag: Ast.Node.Tag) bool {
+    return switch (tag) {
+        .container_decl,
+        .container_decl_trailing,
+        .container_decl_two,
+        .container_decl_two_trailing,
+        .container_decl_arg,
+        .container_decl_arg_trailing,
+        .tagged_union,
+        .tagged_union_trailing,
+        .tagged_union_two,
+        .tagged_union_two_trailing,
+        .tagged_union_enum_tag,
+        .tagged_union_enum_tag_trailing,
+        => true,
+        else => false,
+    };
 }
 
 fn checkFileAsStruct(self: *Linter) void {
@@ -985,6 +984,8 @@ fn isTypeExpression(self: *Linter, node: Ast.Node.Index) bool {
         .error_union => true,
         // Error set declarations (e.g., error{A, B})
         .error_set_decl => true,
+        // Merged error sets (e.g., A || B): `||` only takes error sets
+        .merge_error_sets => true,
         // Function types
         .fn_proto,
         .fn_proto_multi,
@@ -1026,17 +1027,20 @@ fn isPrivateTypeRef(self: *Linter, name: []const u8, enclosing_container: Ast.No
     if (self.imported_types.contains(name)) return false;
     // Don't flag Self type (type matching filename for file-as-struct pattern)
     if (self.isSelfType(name)) return false;
-    // Check if type is pub within the enclosing container
-    if (self.isPublicInContainer(name, enclosing_container)) return false;
+    // Check if type is pub within an enclosing container, the nearest first
+    var container = enclosing_container;
+    while (container.unwrap()) |node| : (container = self.findEnclosingContainer(node)) {
+        if (self.isPublicInContainer(name, node)) return false;
+    }
     return true;
 }
 
 /// Check if a type name is declared as `pub const` within the given container
-fn isPublicInContainer(self: *Linter, name: []const u8, container_opt: Ast.Node.OptionalIndex) bool {
-    const container = container_opt.unwrap() orelse return false;
-    const members = self.getContainerMembers(container) orelse return false;
+fn isPublicInContainer(self: *Linter, name: []const u8, container: Ast.Node.Index) bool {
+    var buf: [2]Ast.Node.Index = undefined;
+    const container_decl = self.tree.fullContainerDecl(&buf, container) orelse return false;
 
-    for (members) |member| {
+    for (container_decl.ast.members) |member| {
         const tag = self.tree.nodeTag(member);
         switch (tag) {
             .simple_var_decl, .aligned_var_decl, .local_var_decl, .global_var_decl => {
@@ -1053,20 +1057,6 @@ fn isPublicInContainer(self: *Linter, name: []const u8, container_opt: Ast.Node.
         }
     }
     return false;
-}
-
-/// Get the member declarations of a container node
-fn getContainerMembers(self: *Linter, node: Ast.Node.Index) ?[]const Ast.Node.Index {
-    const tag = self.tree.nodeTag(node);
-    return switch (tag) {
-        .container_decl, .container_decl_trailing => self.tree.containerDecl(node).ast.members,
-        .container_decl_two, .container_decl_two_trailing => blk: {
-            var buf: [2]Ast.Node.Index = undefined;
-            break :blk self.tree.containerDeclTwo(&buf, node).ast.members;
-        },
-        .container_decl_arg, .container_decl_arg_trailing => self.tree.containerDeclArg(node).ast.members,
-        else => null,
-    };
 }
 
 fn isSelfType(self: *Linter, name: []const u8) bool {
@@ -1406,6 +1396,16 @@ fn checkTypeNodeForPrivateImpl(
             const data = self.tree.nodeData(type_node).node_and_node;
             self.checkTypeNodeForPrivateImpl(data[0], fn_proto, generic_params, true, enclosing_container);
             self.checkTypeNodeForPrivateImpl(data[1], fn_proto, generic_params, false, enclosing_container);
+        },
+        // Each side of a merged set is an error set of its own
+        .merge_error_sets => {
+            const data = self.tree.nodeData(type_node).node_and_node;
+            self.checkTypeNodeForPrivateImpl(data[0], fn_proto, generic_params, true, enclosing_container);
+            self.checkTypeNodeForPrivateImpl(data[1], fn_proto, generic_params, true, enclosing_container);
+        },
+        .grouped_expression => {
+            const child = self.tree.nodeData(type_node).node_and_token[0];
+            self.checkTypeNodeForPrivateImpl(child, fn_proto, generic_params, is_error_position, enclosing_container);
         },
         else => {},
     }
@@ -4487,6 +4487,21 @@ test "Z012: pub fn returning error union with private type" {
     try std.testing.expectEqual(rules.Rule.Z012, linter.diagnostics.items[0].rule);
 }
 
+test "Z012: pub type of a two-member struct is ok" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\test "hook" {
+        \\    const Hook = struct {
+        \\        pub const Self = @This();
+        \\        pub fn write(_: Self) void {}
+        \\    };
+        \\    Hook.write(.{});
+        \\}
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(0, linter.diagnosticCount(.Z012));
+}
+
 test "Z015: pub fn returning private error set" {
     var linter: Linter = .init(std.testing.allocator,
         \\const Oom = error{OutOfMemory};
@@ -4498,6 +4513,93 @@ test "Z015: pub fn returning private error set" {
     linter.lint();
     try std.testing.expectEqual(1, linter.diagnostics.items.len);
     try std.testing.expectEqual(rules.Rule.Z015, linter.diagnostics.items[0].rule);
+}
+
+test "Z015: pub merged error set is public" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\const std = @import("std");
+        \\pub const SyncError = std.Io.File.SyncError || error{LevelUnavailable};
+        \\pub const DirSyncError = SyncError || std.Io.Dir.OpenError;
+        \\pub fn sync() SyncError!void {}
+        \\pub fn syncDir() DirSyncError!void {}
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(0, linter.diagnosticCount(.Z015));
+}
+
+test "Z015: private merged error set is flagged" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\const std = @import("std");
+        \\const SyncError = std.Io.File.SyncError || error{LevelUnavailable};
+        \\pub fn sync() SyncError!void {}
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(1, linter.diagnosticCount(.Z015));
+}
+
+test "Z015: private set merged in the return type is flagged" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\const Oom = error{OutOfMemory};
+        \\pub const Full = error{NoSpaceLeft};
+        \\pub fn a() (Oom || Full)!void {}
+        \\pub fn b() (Full || error{Busy})!void {}
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(1, linter.diagnosticCount(.Z015));
+}
+
+test "Z015: pub error set declared in a tagged union is ok" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\pub const Reply = union(enum) {
+        \\    a: u8,
+        \\    b: u16,
+        \\    pub const CopyError = error{NoSpaceLeft};
+        \\    pub fn copy(reply: Reply, out: []u8) CopyError!Reply {
+        \\        _ = out;
+        \\        return reply;
+        \\    }
+        \\};
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(0, linter.diagnosticCount(.Z015));
+}
+
+test "Z015: pub error set of an outer container is ok" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\pub const Orphans = struct {
+        \\    pub const AdoptError = error{Gone};
+        \\    pub const Spawn = struct {
+        \\        open: bool,
+        \\        pub fn adopt(spawn: *Spawn) AdoptError!void {
+        \\            _ = spawn;
+        \\        }
+        \\    };
+        \\};
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(0, linter.diagnosticCount(.Z015));
+}
+
+test "Z015: private error set declared in a tagged union is flagged" {
+    var linter: Linter = .init(std.testing.allocator,
+        \\pub const Reply = union(enum) {
+        \\    a: u8,
+        \\    b: u16,
+        \\    const CopyError = error{NoSpaceLeft};
+        \\    pub fn copy(reply: Reply, out: []u8) CopyError!Reply {
+        \\        _ = out;
+        \\        return reply;
+        \\    }
+        \\};
+    , "test.zig", null);
+    defer linter.deinit();
+    linter.lint();
+    try std.testing.expectEqual(1, linter.diagnosticCount(.Z015));
 }
 
 test "Z012: pub fn returning public type is ok" {
